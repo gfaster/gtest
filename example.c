@@ -1,15 +1,15 @@
 #define _GNU_SOURCE
-#include "gavtest.h"
+#include "gtest.h"
 
 int 
 main(void)
 {
-	gtest("Test one") {
-		gassert(1);
+	gtest("Test that will pass") {
+		gassert(1 + 1 == 2);
 	}
 
-	gtest("Test two") {
-		gassert(1 + 1 == 2);
+	gtest("Test that will fail") {
+		gassert(1 + 1 == 3);
 	}
 
 	gtest_prntres();

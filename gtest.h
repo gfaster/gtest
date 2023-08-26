@@ -5,14 +5,14 @@
 #error "test library requires _GNU_SOURCE"
 #endif
 
-#include <stdio.h>
 #include <unistd.h>
-#include <sys/wait.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <err.h>
-#include <fcntl.h>
+
 #include <sys/mman.h>
 #include <sys/sendfile.h>
+#include <sys/wait.h>
 
 // #define CAT(x, y) CAT_(x, y)
 // #define CAT_(x, y) x ## y
@@ -27,7 +27,7 @@
 #define gassert(test) do {                      \
 	if (test) {                             \
 	} else {                                \
-		err(1, "\t \033[1;31mAssert failed\033[0m: \"%s\"", #test);\
+		errx(1, "\t \033[1;31mAssert failed\033[0m: \"%s\"", #test);\
 	}                                       \
 } while (0)
 
@@ -119,8 +119,7 @@ gtest_prntres(void)
 	char buf[4096];
 	
 
-	printf("\n\n");
-	printf("%u tests were run:\n", gavtest_failcnt + gavtest_passcnt);
+	printf("\n%u tests were run:\n", gavtest_failcnt + gavtest_passcnt);
 	printf(PASS_STR ": %u\n", gavtest_passcnt);
 	if (gavtest_failcnt > 0) {
 		printf(FAIL_STR ": %u\n", gavtest_failcnt);
@@ -128,7 +127,7 @@ gtest_prntres(void)
 	i = 0;
 	for (; i < gavtest_failcnt; i++) {
 		fail = gavtest_failures[i];
-		printf("\n\n\n\033[1m--------- stdout of %s ---------\033[0m\n", fail.name);
+		printf("\n\033[1m--------- stdout of %s ---------\033[0m\n", fail.name);
 		fflush(NULL);
 		offset = 0;
 		lseek(fail.outfd, 0, SEEK_SET);
