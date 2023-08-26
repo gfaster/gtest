@@ -8,6 +8,11 @@ main(void)
 		gassert(1 + 1 == 2);
 	}
 
+	gtest_ignore = 1;
+	gtest("Test that is ignored") {
+		gassert(0);
+	}
+
 	gtest("Test that will fail") {
 		gassert(1 + 1 == 3);
 	}

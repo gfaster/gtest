@@ -1,8 +1,8 @@
-#ifndef GAVTEST
-#define GAVTEST
+#ifndef GTEST_HEADER
+#define GTEST_HEADER
 
 #ifndef _GNU_SOURCE
-#error "test library requires _GNU_SOURCE"
+#error "gtest requires _GNU_SOURCE"
 #endif
 
 #include <unistd.h>
@@ -23,6 +23,8 @@
 /* "✗" character */
 #define FAIL_STR "\033[1;31m\u2717 FAIL\033[0m"
 
+#define IGN_STR "\033[1;90mIGNORE\033[0m"
+
 
 #define gassert(test) do {                      \
 	if (test) {                             \
@@ -31,60 +33,74 @@
 	}                                       \
 } while (0)
 
-#define gtest(name) for (int igtest = gtest_inner(name); igtest == 0; exit(0))
+#define gtest(name) \
+for (int gtest__igtest = (!gtest_ignore) ? gtest__inner(name) : gtest__ignore(name); gtest__igtest == 0; exit(0))
 
-struct gavtest_failed_test {
+struct gtest__failed_test {
 	int outfd;
 	int errfd;
 	char *name;
 };
 
-static unsigned int gavtest_passcnt = 0;
-static unsigned int gavtest_failcnt = 0;
+static int gtest_ignore = 0;
 
-static struct gavtest_failed_test *gavtest_failures = NULL;
-static unsigned int gavtest_failures_cap = 0;
+static unsigned int gtest__passcnt = 0;
+static unsigned int gtest__igncnt = 0;
+static unsigned int gtest__failcnt = 0;
+
+static struct gtest__failed_test *gtest__failures = NULL;
+static unsigned int gtest__failures_cap = 0;
 
 static void
-gtest_handle_fail(int outfd, int errfd, char *name)
+gtest__handle_fail(int outfd, int errfd, char *name)
 {
-	if (gavtest_failures_cap == gavtest_failcnt) {
-		if (gavtest_failures_cap) {
-			gavtest_failures_cap *= 2;
+	if (gtest__failures_cap == gtest__failcnt) {
+		if (gtest__failures_cap) {
+			gtest__failures_cap *= 2;
 		} else {
-			gavtest_failures_cap = 8;
+			gtest__failures_cap = 8;
 		}
-		gavtest_failures = realloc(gavtest_failures,
-			     gavtest_failures_cap * 
-			     sizeof(struct gavtest_failed_test));
+		gtest__failures = realloc(gtest__failures,
+			     gtest__failures_cap * 
+			     sizeof(struct gtest__failed_test));
 	}
-	gavtest_failures[gavtest_failcnt] = (struct gavtest_failed_test) {
+	gtest__failures[gtest__failcnt] = (struct gtest__failed_test) {
 		.outfd = outfd,
 		.errfd = errfd,
 		.name = name
 	};
 	printf(FAIL_STR " %s\n", name);
-	gavtest_failcnt += 1;
+	gtest__failcnt += 1;
 }
 
 static int
-gtest_inner(char* name)
+gtest__ignore(char *name) 
+{
+	printf(IGN_STR " %s\n", name);
+	gtest__igncnt += 1;
+	gtest_ignore = 0;
+	return 1;
+}
+
+static int
+gtest__inner(char* name)
 {
 	int ingtest;
 	int outfd = memfd_create("test_stdout", 0);
 	int errfd = memfd_create("test_stderr", 0);
-	int pid = fork();
 	if (outfd == -1 || errfd == -1) {
 		err(1, "could not create files for stdout and stderr");
 	}
+	fflush(NULL); // needed so children don't save stdout
+	int pid = fork();
 	if (pid == 0) {
 		/* child */
 		ingtest = 0;
 		dup2(outfd, STDOUT_FILENO);
 		dup2(errfd, STDERR_FILENO);
 	} else if (pid == -1) {
-		warn(FAIL_STR " Test %s failed to run: fork returned -1",
-			name);
+		warn("fork failed");
+		gtest__ignore(name);
 		ingtest = 1;
 	} else {
 		/* parent */
@@ -96,18 +112,19 @@ gtest_inner(char* name)
 		if (WIFEXITED(wstatus)) {
 			if (WEXITSTATUS(wstatus) == 0) {
 				printf(PASS_STR " %s\n", name);
-				gavtest_passcnt += 1;
+				gtest__passcnt += 1;
 				close(outfd);
 				close(errfd);
 			} else {
-				gtest_handle_fail(outfd, errfd, name);
+				gtest__handle_fail(outfd, errfd, name);
 			}
 		} else {
-			gtest_handle_fail(outfd, errfd, name);
+			gtest__handle_fail(outfd, errfd, name);
 		}
 	}
 	return ingtest;
 }
+
 
 static int
 gtest_prntres(void)
@@ -115,18 +132,21 @@ gtest_prntres(void)
 	unsigned int i;
 	ssize_t e;
 	off_t offset;
-	struct gavtest_failed_test fail;
+	struct gtest__failed_test fail;
 	char buf[4096];
 	
 
-	printf("\n%u tests were run:\n", gavtest_failcnt + gavtest_passcnt);
-	printf(PASS_STR ": %u\n", gavtest_passcnt);
-	if (gavtest_failcnt > 0) {
-		printf(FAIL_STR ": %u\n", gavtest_failcnt);
+	printf("\n%u tests were run:\n", gtest__failcnt + gtest__passcnt);
+	printf(PASS_STR ": %u\n", gtest__passcnt);
+	if (gtest__failcnt > 0) {
+		printf(FAIL_STR ": %u\n", gtest__failcnt);
+	}
+	if (gtest__igncnt > 0) {
+		printf(IGN_STR ": %u\n", gtest__igncnt);
 	}
 	i = 0;
-	for (; i < gavtest_failcnt; i++) {
-		fail = gavtest_failures[i];
+	for (; i < gtest__failcnt; i++) {
+		fail = gtest__failures[i];
 		printf("\n\033[1m--------- stdout of %s ---------\033[0m\n", fail.name);
 		fflush(NULL);
 		offset = 0;
@@ -159,16 +179,16 @@ gtest_prntres(void)
 			warn("could not close test stderr fd %i", fail.errfd);
 		}
 	}
-	if (gavtest_failcnt) {
-		free(gavtest_failures);
+	if (gtest__failcnt) {
+		free(gtest__failures);
 	}
-	return gavtest_failcnt;
+	return gtest__failcnt;
 }
 
 static int 
 gtest_issuccess(void)
 {
-	return gavtest_failcnt == 0 && gavtest_passcnt > 0;
+	return gtest__failcnt == 0 && gtest__passcnt > 0;
 }
 
 
