@@ -131,7 +131,6 @@ gtest_prntres(void)
 {
 	unsigned int i;
 	ssize_t e;
-	off_t offset;
 	struct gtest__failed_test fail;
 	char buf[4096];
 	
@@ -149,7 +148,6 @@ gtest_prntres(void)
 		fail = gtest__failures[i];
 		printf("\n\033[1m--------- stdout of %s ---------\033[0m\n", fail.name);
 		fflush(NULL);
-		offset = 0;
 		lseek(fail.outfd, 0, SEEK_SET);
 		while ((e = read(fail.outfd, buf, 4096))) {
 			if (e == -1) {
