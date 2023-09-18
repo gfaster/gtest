@@ -39,7 +39,7 @@ for (int gtest__igtest = (!gtest_ignore) ? gtest__inner(name) : gtest__ignore(na
 struct gtest__failed_test {
 	int outfd;
 	int errfd;
-	char *name;
+	const char *name;
 };
 
 static int gtest_ignore = 0;
@@ -52,7 +52,7 @@ static struct gtest__failed_test *gtest__failures = NULL;
 static unsigned int gtest__failures_cap = 0;
 
 static void
-gtest__handle_fail(int outfd, int errfd, char *name)
+gtest__handle_fail(int outfd, int errfd, const char *name)
 {
 	if (gtest__failures_cap == gtest__failcnt) {
 		if (gtest__failures_cap) {
@@ -60,7 +60,7 @@ gtest__handle_fail(int outfd, int errfd, char *name)
 		} else {
 			gtest__failures_cap = 8;
 		}
-		gtest__failures = realloc(gtest__failures,
+		gtest__failures = (struct gtest__failed_test *) realloc(gtest__failures,
 			     gtest__failures_cap * 
 			     sizeof(struct gtest__failed_test));
 	}
@@ -74,7 +74,7 @@ gtest__handle_fail(int outfd, int errfd, char *name)
 }
 
 static int
-gtest__ignore(char *name) 
+gtest__ignore(const char *name) 
 {
 	printf(IGN_STR " %s\n", name);
 	gtest__igncnt += 1;
@@ -83,7 +83,7 @@ gtest__ignore(char *name)
 }
 
 static int
-gtest__inner(char* name)
+gtest__inner(const char* name)
 {
 	int ingtest;
 	int outfd = memfd_create("test_stdout", 0);
@@ -130,9 +130,9 @@ static int
 gtest_prntres(void)
 {
 	unsigned int i;
+	int has_out, has_err;
 	ssize_t e;
 	struct gtest__failed_test fail;
-	char buf[4096];
 	
 
 	printf("\n%u tests were run:\n", gtest__failcnt + gtest__passcnt);
@@ -146,35 +146,39 @@ gtest_prntres(void)
 	i = 0;
 	for (; i < gtest__failcnt; i++) {
 		fail = gtest__failures[i];
-		printf("\n\033[1m--------- stdout of %s ---------\033[0m\n", fail.name);
-		fflush(NULL);
-		lseek(fail.outfd, 0, SEEK_SET);
-		while ((e = read(fail.outfd, buf, 4096))) {
-			if (e == -1) {
-				err(1, "reading test stdout failed");
+		if ((has_out = (lseek(fail.outfd, 0, SEEK_END) > 0))) {
+			printf("\n\033[1m---------\033[0m stdout of %s \033[1m---------\033[0m\n", fail.name);
+			fflush(NULL);
+			lseek(fail.outfd, 0, SEEK_SET);
+			while ((e = sendfile(STDERR_FILENO, fail.outfd, NULL, 1 << 20))) {
+				if (e == -1) {
+					warn("reading test stdout failed");
+					break;
+				}
 			}
-			if (write(STDOUT_FILENO, buf, e) != e) {
-				err(1, "incomplete write");
-			}
+			puts("");
 		}
 		if (close(fail.outfd)) {
 			warn("could not close test stdout fd %i", fail.outfd);
 		}
+		if ((has_err = (lseek(fail.errfd, 0, SEEK_END) > 0))) {
+			printf("\n\033[1m---------\033[0m stderr of %s \033[1m---------\033[0m\n", fail.name);
+			fflush(NULL);
 
-		printf("\n\033[1m--------- stderr of %s ---------\033[0m\n", fail.name);
-		fflush(NULL);
-
-		lseek(fail.errfd, 0, SEEK_SET);
-		while ((e = read(fail.errfd, buf, 4096))) {
-			if (e == -1) {
-				err(1, "reading test stderr failed");
+			lseek(fail.errfd, 0, SEEK_SET);
+			while ((e = sendfile(STDERR_FILENO, fail.errfd, NULL, 1 << 20))) {
+				if (e == -1) {
+					warn("reading test stderr failed");
+					break;
+				}
 			}
-			if (write(STDERR_FILENO, buf, e) != e) {
-				err(1, "incomplete write");
-			}
+			puts("");
 		}
 		if (close(fail.errfd)) {
 			warn("could not close test stderr fd %i", fail.errfd);
+		}
+		if (!has_out && !has_err) {
+			printf("\n\033[1m[NO OUTPUT]\033[0m %s\n", fail.name);
 		}
 	}
 	if (gtest__failcnt) {
