@@ -133,6 +133,7 @@ gtest_prntres(void)
 	int has_out, has_err;
 	ssize_t e;
 	struct gtest__failed_test fail;
+	char buf[4096];
 	
 
 	printf("\n%u tests were run:\n", gtest__failcnt + gtest__passcnt);
@@ -150,10 +151,12 @@ gtest_prntres(void)
 			printf("\n\033[1m---------\033[0m stdout of %s \033[1m---------\033[0m\n", fail.name);
 			fflush(NULL);
 			lseek(fail.outfd, 0, SEEK_SET);
-			while ((e = sendfile(STDERR_FILENO, fail.outfd, NULL, 1 << 20))) {
+			while ((e = read(fail.outfd, buf, 4096))) {
 				if (e == -1) {
-					warn("reading test stdout failed");
-					break;
+					err(1, "reading test stdout failed");
+				}
+				if (write(STDOUT_FILENO, buf, e) != e) {
+					err(1, "incomplete write");
 				}
 			}
 			puts("");
@@ -166,10 +169,12 @@ gtest_prntres(void)
 			fflush(NULL);
 
 			lseek(fail.errfd, 0, SEEK_SET);
-			while ((e = sendfile(STDERR_FILENO, fail.errfd, NULL, 1 << 20))) {
+			while ((e = read(fail.errfd, buf, 4096))) {
 				if (e == -1) {
-					warn("reading test stderr failed");
-					break;
+					err(1, "reading test stderr failed");
+				}
+				if (write(STDERR_FILENO, buf, e) != e) {
+					err(1, "incomplete write");
 				}
 			}
 			puts("");
